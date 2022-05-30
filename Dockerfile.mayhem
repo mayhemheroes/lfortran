@@ -1,0 +1,17 @@
+FROM --platform=linux/amd64 ubuntu:22.04
+
+RUN apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git wget binutils-dev cmake libz-dev llvm-dev clang
+
+RUN wget --no-check-certificate https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+RUN bash miniconda.sh -b -p $HOME/conda_root
+ENV PATH=/root/conda_root/bin:$PATH
+
+RUN conda create -n lf -c conda-forge llvmdev=11.0.1 bison=3.4 re2c python cmake make toml
+SHELL ["conda", "run", "-n", "lf", "/bin/bash", "-c"]
+
+COPY . /repo
+WORKDIR /repo
+RUN ./build0.sh
+RUN ./build1.sh
+
