@@ -1,6 +1,5 @@
-project: rnshah9/lfortran
+project: lfortran
 target: lfortran
-tests: null
 
 cmds:
   - cmd: /repo/inst/bin/lfortran -S @@
