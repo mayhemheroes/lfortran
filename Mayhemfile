@@ -2,4 +2,4 @@ project: lfortran
 target: lfortran
 
 cmds:
-  - cmd: /repo/inst/bin/lfortran -S @@
+  - cmd: /lfortran -S @@
