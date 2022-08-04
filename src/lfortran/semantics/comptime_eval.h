@@ -24,7 +24,8 @@ struct IntrinsicProceduresAsASRNodes {
 
         IntrinsicProceduresAsASRNodes() {
             intrinsics_present_in_ASR = {"size", "lbound", "ubound",
-                "transpose", "matmul", "pack", "transfer", "cmplx"};
+                "transpose", "matmul", "pack", "transfer", "cmplx",
+                "reshape"};
         }
 
         bool is_intrinsic_present_in_ASR(std::string& name) {
@@ -1057,10 +1058,9 @@ TRIG(sqrt)
                 int32_t y = 0;
                 if (shift->type == ASR::exprType::IntegerConstant) {
                     y = ASR::down_cast<ASR::IntegerConstant_t>(shift)->m_n;
-                } else if(shift->type == ASR::exprType::UnaryOp){
-                    ASR::UnaryOp_t *u = ASR::down_cast<ASR::UnaryOp_t>(shift);
-                    LFORTRAN_ASSERT(u->m_op == ASR::unaryopType::USub);
-                    y = - ASR::down_cast<ASR::IntegerConstant_t>(u->m_operand)->m_n;
+                } else if(shift->type == ASR::exprType::IntegerUnaryMinus) {
+                    ASR::IntegerUnaryMinus_t *u = ASR::down_cast<ASR::IntegerUnaryMinus_t>(shift);
+                    y = - ASR::down_cast<ASR::IntegerConstant_t>(u->m_arg)->m_n;
                 }
                 if(abs(y) <= 31) {
                     int32_t val;
@@ -1087,10 +1087,9 @@ TRIG(sqrt)
                 int64_t y = 0;
                 if (shift->type == ASR::exprType::IntegerConstant) {
                     y = ASR::down_cast<ASR::IntegerConstant_t>(shift)->m_n;
-                } else if(shift->type == ASR::exprType::UnaryOp){
-                    ASR::UnaryOp_t *u = ASR::down_cast<ASR::UnaryOp_t>(shift);
-                    LFORTRAN_ASSERT(u->m_op == ASR::unaryopType::USub);
-                    y = - ASR::down_cast<ASR::IntegerConstant_t>(u->m_operand)->m_n;
+                } else if(shift->type == ASR::exprType::IntegerUnaryMinus) {
+                    ASR::IntegerUnaryMinus_t *u = ASR::down_cast<ASR::IntegerUnaryMinus_t>(shift);
+                    y = - ASR::down_cast<ASR::IntegerConstant_t>(u->m_arg)->m_n;
                 }
                 if(abs(y) <= 63) {
                     int64_t val;

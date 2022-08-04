@@ -27,8 +27,10 @@ public:
     ASR::asr_t *asr;
     bool from_block;
 
-    BodyVisitor(Allocator &al, ASR::asr_t *unit, diag::Diagnostics &diagnostics)
-         : CommonVisitor(al, nullptr, diagnostics), asr{unit}, from_block{false} {}
+    BodyVisitor(Allocator &al, ASR::asr_t *unit, diag::Diagnostics &diagnostics,
+            CompilerOptions &compiler_options)
+         : CommonVisitor(al, nullptr, diagnostics, compiler_options),
+           asr{unit}, from_block{false} {}
 
     void visit_Declaration(const AST::Declaration_t& x) {
         if( from_block ) {
@@ -57,7 +59,8 @@ public:
                                               body.p, body.size());
         current_scope = parent_scope;
         current_scope->add_symbol(name, ASR::down_cast<ASR::symbol_t>(block));
-        tmp = ASR::make_BlockCall_t(al, x.base.base.loc, ASR::down_cast<ASR::symbol_t>(block));
+        tmp = ASR::make_BlockCall_t(al, x.base.base.loc,  -1,
+                                    ASR::down_cast<ASR::symbol_t>(block));
         from_block = false;
     }
 
@@ -267,8 +270,8 @@ public:
             m_values = r->m_values; n_values = r->n_values;
         }
 
-        ASR::expr_t *a_unit, *a_fmt, *a_iomsg, *a_iostat, *a_id;
-        a_unit = a_fmt = a_iomsg = a_iostat = a_id = nullptr;
+        ASR::expr_t *a_unit, *a_fmt, *a_iomsg, *a_iostat, *a_id, *a_separator, *a_end;
+        a_unit = a_fmt = a_iomsg = a_iostat = a_id = a_separator = a_end = nullptr;
         Vec<ASR::expr_t*> a_values_vec;
         a_values_vec.reserve(al, n_values);
 
@@ -359,7 +362,7 @@ public:
         }
         if( _type == AST::stmtType::Write ) {
             tmp = ASR::make_FileWrite_t(al, loc, m_label, a_unit, a_fmt,
-                                    a_iomsg, a_iostat, a_id, a_values_vec.p, n_values);
+                                    a_iomsg, a_iostat, a_id, a_values_vec.p, n_values, a_separator, a_end);
         } else if( _type == AST::stmtType::Read ) {
             tmp = ASR::make_FileRead_t(al, loc, m_label, a_unit, a_fmt,
                                    a_iomsg, a_iostat, a_id, a_values_vec.p, n_values);
@@ -546,11 +549,11 @@ public:
             } else if( x.m_args[i].m_start && !x.m_args[i].m_end && x.m_args[i].m_step ) {
                 this->visit_expr(*(x.m_args[i].m_step));
             }
-            // Assume that tmp is an `ArrayRef`
+            // Assume that tmp is an `ArraySection` or `ArrayItem`
             ASR::expr_t* tmp_stmt = LFortran::ASRUtils::EXPR(tmp);
-            if( ASR::is_a<ASR::ArrayRef_t>(*tmp_stmt) ) {
-                ASR::ArrayRef_t* array_ref = ASR::down_cast<ASR::ArrayRef_t>(tmp_stmt);
-                new_arg.m_a = array_ref->m_v;
+            if( ASR::is_a<ASR::ArraySection_t>(*tmp_stmt) ) {
+                ASR::ArraySection_t* array_ref = ASR::down_cast<ASR::ArraySection_t>(tmp_stmt);
+                new_arg.m_a = ASR::down_cast<ASR::symbol_t>((ASR::asr_t*)ASRUtils::EXPR2VAR(array_ref->m_v));
                 Vec<ASR::dimension_t> dims_vec;
                 dims_vec.reserve(al, array_ref->n_args);
                 for( size_t j = 0; j < array_ref->n_args; j++ ) {
@@ -563,7 +566,23 @@ public:
                         new_dim.m_start = const_1;
                     }
                     ASR::expr_t* m_right = array_ref->m_args[j].m_right;
-                    new_dim.m_end = m_right;
+                    new_dim.m_length = ASRUtils::compute_length_from_start_end(al, new_dim.m_start, m_right);
+                    dims_vec.push_back(al, new_dim);
+                }
+                new_arg.m_dims = dims_vec.p;
+                new_arg.n_dims = dims_vec.size();
+                alloc_args_vec.push_back(al, new_arg);
+            } else if( ASR::is_a<ASR::ArrayItem_t>(*tmp_stmt) ) {
+                ASR::ArrayItem_t* array_ref = ASR::down_cast<ASR::ArrayItem_t>(tmp_stmt);
+                new_arg.m_a = ASR::down_cast<ASR::symbol_t>((ASR::asr_t*)ASRUtils::EXPR2VAR(array_ref->m_v));
+                Vec<ASR::dimension_t> dims_vec;
+                dims_vec.reserve(al, array_ref->n_args);
+                for( size_t j = 0; j < array_ref->n_args; j++ ) {
+                    ASR::dimension_t new_dim;
+                    new_dim.loc = array_ref->m_args[j].loc;
+                    new_dim.m_start = const_1;
+                    new_dim.m_length = ASRUtils::compute_length_from_start_end(al, new_dim.m_start,
+                                            array_ref->m_args[j].m_right);
                     dims_vec.push_back(al, new_dim);
                 }
                 new_arg.m_dims = dims_vec.p;
@@ -964,7 +983,8 @@ public:
         }
         ASR::ttype_t *target_type = LFortran::ASRUtils::expr_type(target);
         if( target->type != ASR::exprType::Var &&
-            target->type != ASR::exprType::ArrayRef &&
+            target->type != ASR::exprType::ArrayItem &&
+            target->type != ASR::exprType::ArraySection &&
             target->type != ASR::exprType::DerivedRef )
         {
             throw SemanticError(
@@ -979,7 +999,8 @@ public:
         }
         if( overloaded_stmt == nullptr ) {
             if (target->type == ASR::exprType::Var ||
-                target->type == ASR::exprType::ArrayRef) {
+                target->type == ASR::exprType::ArrayItem ||
+                target->type == ASR::exprType::ArraySection) {
 
                 ImplicitCastRules::set_converted_value(al, x.base.base.loc, &value,
                                                         value_type, target_type);
@@ -1001,6 +1022,43 @@ public:
                                      overloaded_stmt);
     }
 
+    ASR::asr_t* create_CFPointer(const AST::SubroutineCall_t& x) {
+        std::vector<ASR::expr_t*> args;
+        std::vector<std::string> kwarg_names = {"shape"};
+        handle_intrinsic_node_args<AST::SubroutineCall_t>(
+            x, args, kwarg_names, 2, 3, std::string("c_f_ptr"));
+        ASR::expr_t *cptr = args[0], *fptr = args[1], *shape = args[2];
+        ASR::ttype_t* fptr_type = ASRUtils::expr_type(fptr);
+        bool is_fptr_array = ASRUtils::is_array(fptr_type);
+        bool is_ptr = ASR::is_a<ASR::Pointer_t>(*fptr_type);
+        if( !is_ptr ) {
+            throw SemanticError("fptr is not a pointer.", fptr->base.loc);
+        }
+        if(!is_fptr_array && shape) {
+            throw SemanticError("shape argument specified in c_f_pointer "
+                                "even though fptr is not an array.",
+                                shape->base.loc);
+        }
+        if(is_fptr_array && !shape) {
+            throw SemanticError("shape argument not specified in c_f_pointer "
+                                "even though fptr is an array.",
+                                shape->base.loc);
+        }
+        ASR::dimension_t* shape_dims;
+        if( shape ) {
+            int shape_rank = ASRUtils::extract_dimensions_from_ttype(
+                                ASRUtils::expr_type(shape),
+                                shape_dims);
+            if( shape_rank != 1 ) {
+                throw SemanticError("shape array passed to c_f_pointer "
+                                    "must be of rank 1 but given rank is " +
+                                    std::to_string(shape_rank),
+                                    shape->base.loc);
+            }
+        }
+        return ASR::make_CPtrToPointer_t(al, x.base.base.loc, cptr, fptr, shape);
+    }
+
     void visit_SubroutineCall(const AST::SubroutineCall_t &x) {
         SymbolTable* scope = current_scope;
         std::string sub_name = to_lower(x.m_name);
@@ -1019,6 +1077,21 @@ public:
         }
         if (!original_sym) {
             original_sym = resolve_intrinsic_function(x.base.base.loc, sub_name);
+        }
+        ASR::symbol_t *sym = ASRUtils::symbol_get_past_external(original_sym);
+        if (ASR::is_a<ASR::Subroutine_t>(*sym)) {
+            ASR::Subroutine_t *f = ASR::down_cast<ASR::Subroutine_t>(sym);
+            if (ASRUtils::is_intrinsic_procedure(f)) {
+                if (intrinsic_module_procedures_as_asr_nodes.find(sub_name) !=
+                    intrinsic_module_procedures_as_asr_nodes.end()) {
+                    if (sub_name == "c_f_pointer") {
+                        tmp = create_CFPointer(x);
+                    } else {
+                        LFORTRAN_ASSERT(false)
+                    }
+                    return;
+                }
+            }
         }
         Vec<ASR::call_arg_t> args;
         visit_expr_list(x.m_args, x.n_args, args);
@@ -1159,7 +1232,7 @@ public:
             fmt = ASRUtils::EXPR(tmp);
         }
         tmp = ASR::make_Print_t(al, x.base.base.loc, fmt,
-            body.p, body.size());
+            body.p, body.size(), nullptr, nullptr);
     }
 
     void visit_If(const AST::If_t &x) {
@@ -1381,7 +1454,7 @@ public:
                     x.base.base.loc);
             }
         } else {
-            throw SemanticError("Currently only 'goto INTEGER' is supported",
+            throw SemanticError("Only 'goto INTEGER' is supported currently",
                 x.base.base.loc);
         }
     }
@@ -1446,9 +1519,10 @@ public:
 Result<ASR::TranslationUnit_t*> body_visitor(Allocator &al,
         AST::TranslationUnit_t &ast,
         diag::Diagnostics &diagnostics,
-        ASR::asr_t *unit)
+        ASR::asr_t *unit,
+        CompilerOptions &compiler_options)
 {
-    BodyVisitor b(al, unit, diagnostics);
+    BodyVisitor b(al, unit, diagnostics, compiler_options);
     try {
         b.visit_TranslationUnit(ast);
     } catch (const SemanticError &e) {

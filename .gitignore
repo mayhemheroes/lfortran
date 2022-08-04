@@ -71,6 +71,7 @@ src/lfortran/ast.h
 src/lfortran/asr.h
 src/libasr/asr.h
 src/libasr/ast.h
+src/libasr/wasm_visitor.h
 src/lfortran/config.h
 src/libasr/config.h
 share/jupyter/kernels/fortran/kernel.json
@@ -86,6 +87,10 @@ src/runtime/tests/test_sin
 src/runtime/tests/test_sin2
 src/runtime/tests/test_strings
 src/runtime/tests/test_tan
+integration_tests/test-llvm/*
+integration_tests/test-cpp/*
+integration_tests/test-x86/*
+integration_tests/test-wasm/*
 
 ### https://raw.github.com/github/gitignore/218a941be92679ce67d0484547e3e142b2f5f6f0/Global/macOS.gitignore
 
@@ -165,6 +170,8 @@ output
 *.out
 *.mod
 *.smod
+*.js
+*.wasm
 /.ccls-cache/
 .cache/
 ext/
@@ -178,3 +185,6 @@ build.ninja
 .ninja_deps
 .ninja_log
 /compile_commands.json
+
+## Docs
+!doc/src/javascripts/*.js

@@ -30,11 +30,9 @@ to:
 class PrintArrVisitor : public PassUtils::PassVisitor<PrintArrVisitor>
 {
 private:
-    ASR::TranslationUnit_t &unit;
     std::string rl_path;
 public:
-    PrintArrVisitor(Allocator &al, ASR::TranslationUnit_t &unit_,
-        const std::string &rl_path_) : PassVisitor(al, nullptr), unit(unit_),
+    PrintArrVisitor(Allocator &al, const std::string &rl_path_) : PassVisitor(al, nullptr),
     rl_path(rl_path_) {
         pass_result.reserve(al, 1);
 
@@ -48,12 +46,13 @@ public:
             Vec<ASR::expr_t*> idx_vars;
             PassUtils::create_idx_vars(idx_vars, n_dims, x.base.base.loc, al, current_scope);
             ASR::stmt_t* doloop = nullptr;
-            ASR::stmt_t* empty_print_endl = LFortran::ASRUtils::STMT(ASR::make_Print_t(al, x.base.base.loc, nullptr, nullptr, 0));
+            ASR::stmt_t* empty_print_endl = LFortran::ASRUtils::STMT(ASR::make_Print_t(al, x.base.base.loc,
+                                                nullptr, nullptr, 0, nullptr, nullptr));
             for( int i = n_dims - 1; i >= 0; i-- ) {
                 ASR::do_loop_head_t head;
                 head.m_v = idx_vars[i];
-                head.m_start = PassUtils::get_bound(arr_expr, i + 1, "lbound", al, unit, rl_path, current_scope);
-                head.m_end = PassUtils::get_bound(arr_expr, i + 1, "ubound", al, unit, rl_path, current_scope);
+                head.m_start = PassUtils::get_bound(arr_expr, i + 1, "lbound", al);
+                head.m_end = PassUtils::get_bound(arr_expr, i + 1, "ubound", al);
                 head.m_increment = nullptr;
                 head.loc = head.m_v->base.loc;
                 Vec<ASR::stmt_t*> doloop_body;
@@ -64,7 +63,7 @@ public:
                     print_args.reserve(al, 1);
                     print_args.push_back(al, ref);
                     ASR::stmt_t* print_stmt = LFortran::ASRUtils::STMT(ASR::make_Print_t(al, x.base.base.loc, nullptr,
-                                                                 print_args.p, print_args.size()));
+                                                                 print_args.p, print_args.size(), nullptr, nullptr));
                     doloop_body.push_back(al, print_stmt);
                 } else {
                     doloop_body.push_back(al, doloop);
@@ -81,7 +80,7 @@ public:
 
 void pass_replace_print_arr(Allocator &al, ASR::TranslationUnit_t &unit,
         const std::string &rl_path) {
-    PrintArrVisitor v(al, unit, rl_path);
+    PrintArrVisitor v(al, rl_path);
     v.visit_TranslationUnit(unit);
     LFORTRAN_ASSERT(asr_verify(unit));
 }

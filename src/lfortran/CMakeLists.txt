@@ -3,6 +3,7 @@ set(SRC
     parser/tokenizer.cpp
     parser/parser.tab.cc
     parser/parser.cpp
+    parser/fixedform_tokenizer.cpp
 
     semantics/ast_symboltable_visitor.cpp
     semantics/ast_body_visitor.cpp
@@ -20,9 +21,12 @@ set(SRC
     mod_to_asr.cpp
 
     utils.cpp
-
-    ../bin/tpl/whereami/whereami.cpp
 )
+
+if (WITH_WHEREAMI)
+    set(SRC ${SRC} ../bin/tpl/whereami/whereami.cpp)
+endif()
+
 if (WITH_XEUS)
     set(SRC ${SRC}
         fortran_kernel.cpp
@@ -34,7 +38,12 @@ if (WITH_JSON)
     )
 endif()
 add_library(lfortran_lib ${SRC})
-target_link_libraries(lfortran_lib asr lfortran_runtime_static ZLIB::ZLIB)
+target_link_libraries(lfortran_lib asr lfortran_runtime_static)
+
+if (WITH_ZLIB)
+    target_link_libraries(lfortran_lib ZLIB::ZLIB)
+endif()
+
 target_include_directories(lfortran_lib BEFORE PUBLIC ${lfortran_SOURCE_DIR}/src)
 target_include_directories(lfortran_lib BEFORE PUBLIC ${lfortran_BINARY_DIR}/src)
 if (WITH_XEUS)

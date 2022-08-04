@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 
 project(lfort C Fortran)
 
@@ -63,11 +63,33 @@ macro(RUN)
 
     if (ADD_TEST)
         add_executable(${name} ${name}.f90 ${RUN_EXTRAFILES})
-        if ((LFORTRAN_BACKEND STREQUAL "cpp") OR (LFORTRAN_BACKEND STREQUAL "x86"))
+        if ((LFORTRAN_BACKEND STREQUAL "cpp") OR (LFORTRAN_BACKEND STREQUAL "x86") OR (LFORTRAN_BACKEND STREQUAL "wasm"))
             target_compile_options(${name} PUBLIC --backend=${LFORTRAN_BACKEND})
             target_link_options(${name} PUBLIC --backend=${LFORTRAN_BACKEND})
         endif()
-        add_test(${name} ${CURRENT_BINARY_DIR}/${name})
+
+        if ((LFORTRAN_BACKEND STREQUAL "wasm"))
+            find_program(WASM_EXEC_RUNTIME node)
+            execute_process(COMMAND "${WASM_EXEC_RUNTIME}" --version
+                            OUTPUT_VARIABLE WASM_EXEC_VERSION
+                            OUTPUT_STRIP_TRAILING_WHITESPACE)
+            string(COMPARE GREATER_EQUAL "${WASM_EXEC_VERSION}"
+                                    "v16.0.0" IS_NODE_ABOVE_16)
+
+            if (NOT IS_NODE_ABOVE_16)
+                message(STATUS "${WASM_EXEC_RUNTIME} version: ${WASM_EXEC_VERSION}")
+                set(WASM_EXEC_FLAGS "--experimental-wasm-bigint")
+            endif()
+
+            add_test(${name} ${WASM_EXEC_RUNTIME} ${WASM_EXEC_FLAGS} ${CURRENT_BINARY_DIR}/${name}.js)
+        else()
+            add_test(${name} ${CURRENT_BINARY_DIR}/${name})
+        endif()
+
+        if (LFORTRAN_BACKEND STREQUAL "llvm2")
+            target_compile_options(${name} PUBLIC --generate-object-code)
+            target_link_options(${name} PUBLIC  --generate-object-code)
+        endif()
 
         if (RUN_LABELS)
             set_tests_properties(${name} PROPERTIES LABELS "${RUN_LABELS}")
@@ -79,19 +101,30 @@ macro(RUN)
     endif()
 endmacro(RUN)
 
+# The supported test labels are:
+#
+# gfortran --- compile with GFortran
+# llvm     --- compile with LFortran, only generate binary code at the very end
+# llvm2    --- compile with LFortran, generate object files
+# cpp      --- compile to C++, compile C++ to binary
+# x86      --- compile to x86 binary directly
+# wasm     --- compile to WASM binary directly
+
 
 # GFortran + LFortran LLVM + LFortran C++
 
-RUN(NAME program_cmake_01 LABELS gfortran llvm cpp x86)
+RUN(NAME program_cmake_01 LABELS gfortran llvm cpp x86 wasm)
 RUN(NAME program_cmake_02 LABELS gfortran llvm cpp x86)
 
-RUN(NAME abort_01 FAIL LABELS gfortran llvm cpp x86)
+RUN(NAME error_stop_01 FAIL LABELS gfortran llvm cpp x86 wasm llvm2)
+RUN(NAME error_stop_02 FAIL LABELS llvm wasm llvm2)
+RUN(NAME stop_01 LABELS llvm wasm llvm2)
 
-RUN(NAME print_01 LABELS gfortran llvm cpp)
-RUN(NAME print_02 LABELS gfortran llvm)
+RUN(NAME print_01 LABELS gfortran llvm cpp llvm2)
+RUN(NAME print_02 LABELS gfortran llvm llvm2)
 
-RUN(NAME cond_01 LABELS gfortran llvm cpp x86)
-RUN(NAME cond_02 LABELS gfortran llvm)
+RUN(NAME cond_01 LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME cond_02 LABELS gfortran llvm wasm)
 
 RUN(NAME expr_01 FAIL LABELS gfortran llvm cpp x86)
 RUN(NAME expr_02 LABELS gfortran llvm cpp x86)
@@ -105,26 +138,31 @@ RUN(NAME variables_01 LABELS gfortran llvm cpp x86)
 RUN(NAME variables_02 LABELS gfortran llvm cpp x86)
 RUN(NAME variables_03 LABELS gfortran llvm cpp)
 
-RUN(NAME if_01 LABELS gfortran llvm cpp x86)
-RUN(NAME if_02 FAIL LABELS gfortran llvm cpp x86)
-RUN(NAME if_03 FAIL LABELS gfortran llvm cpp x86)
+RUN(NAME if_01 LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME if_02 FAIL LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME if_03 FAIL LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME if_04 LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME if_05 LABELS gfortran llvm cpp wasm)
 
 RUN(NAME while_01 LABELS gfortran llvm cpp x86)
 RUN(NAME while_02 LABELS gfortran llvm cpp)
 
-RUN(NAME doloop_01 LABELS gfortran llvm cpp x86)
-RUN(NAME doloop_02 LABELS gfortran llvm cpp x86)
-RUN(NAME doloop_03 LABELS gfortran llvm cpp)
+RUN(NAME doloop_01 LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME doloop_02 LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME doloop_03 LABELS gfortran llvm cpp wasm)
 RUN(NAME doloop_04 LABELS gfortran llvm)
 RUN(NAME doloop_05 LABELS gfortran llvm cpp)
+RUN(NAME doloop_06 LABELS gfortran llvm cpp wasm)
+RUN(NAME doloop_07 LABELS gfortran llvm cpp wasm)
 
 RUN(NAME goto_01 LABELS gfortran llvm)
 RUN(NAME goto_02 LABELS gfortran llvm)
 RUN(NAME goto_03 LABELS gfortran)
 
-RUN(NAME subroutines_01 LABELS gfortran llvm cpp x86)
-RUN(NAME subroutines_02 LABELS gfortran llvm cpp x86)
-RUN(NAME subroutines_04 LABELS gfortran llvm)
+RUN(NAME subroutines_01 LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME subroutines_02 LABELS gfortran llvm cpp x86 wasm)
+RUN(NAME subroutines_03 LABELS gfortran llvm wasm)
+RUN(NAME subroutines_04 LABELS gfortran llvm wasm)
 RUN(NAME subroutines_06 LABELS gfortran)
 RUN(NAME subroutines_07 LABELS gfortran)
 
@@ -149,9 +187,9 @@ RUN(NAME types_06 LABELS gfortran llvm cpp)
 # GFortran + LFortran C++
 RUN(NAME doconcurrentloop_01 LABELS gfortran cpp)
 
-RUN(NAME arrays_01 LABELS gfortran cpp llvm)
-RUN(NAME arrays_01_size LABELS gfortran llvm)
-RUN(NAME arrays_02_size LABELS gfortran llvm)
+RUN(NAME arrays_01 LABELS gfortran cpp llvm wasm)
+RUN(NAME arrays_01_size LABELS gfortran llvm wasm)
+RUN(NAME arrays_02_size LABELS gfortran llvm wasm)
 RUN(NAME matrix_01_transpose LABELS gfortran)
 RUN(NAME matrix_02_matmul LABELS gfortran)
 RUN(NAME array_01_pack LABELS gfortran)
@@ -159,9 +197,9 @@ RUN(NAME array_01_transfer LABELS gfortran)
 RUN(NAME array_02_pack LABELS gfortran)
 RUN(NAME array_02_transfer LABELS gfortran)
 RUN(NAME array_03_transfer LABELS gfortran)
-RUN(NAME arrays_01_real LABELS gfortran llvm)
+RUN(NAME arrays_01_real LABELS gfortran llvm wasm)
 RUN(NAME arrays_01_complex LABELS gfortran llvm)
-RUN(NAME arrays_01_logical LABELS gfortran llvm)
+RUN(NAME arrays_01_logical LABELS gfortran llvm wasm)
 RUN(NAME array_bound_1 LABELS gfortran llvm)
 RUN(NAME arrays_op_1 LABELS gfortran llvm)
 RUN(NAME arrays_op_2 LABELS gfortran llvm)
@@ -170,19 +208,25 @@ RUN(NAME arrays_op_4 LABELS gfortran llvm)
 RUN(NAME arrays_op_5 LABELS gfortran llvm)
 RUN(NAME arrays_op_6 LABELS gfortran llvm)
 RUN(NAME arrays_op_7 LABELS gfortran llvm)
-RUN(NAME arrays_03_func LABELS gfortran cpp llvm)
-RUN(NAME arrays_04_func LABELS gfortran cpp llvm)
-RUN(NAME arrays_05 LABELS gfortran cpp)
+RUN(NAME arrays_op_8 LABELS gfortran llvm)
+RUN(NAME arrays_op_9 LABELS gfortran llvm)
+RUN(NAME arrays_reshape_14 LABELS gfortran llvm)
+RUN(NAME arrays_elemental_15 LABELS gfortran llvm)
+RUN(NAME arrays_03_func LABELS gfortran cpp llvm wasm)
+RUN(NAME arrays_04_func LABELS gfortran cpp llvm wasm)
+RUN(NAME arrays_05 LABELS gfortran llvm cpp wasm)
 
 # GFortran
 RUN(NAME arrays_02 LABELS gfortran)
 RUN(NAME arrays_06 LABELS gfortran llvm)
 RUN(NAME arrays_07 LABELS gfortran llvm)
-RUN(NAME arrays_08_func LABELS gfortran llvm)
+RUN(NAME arrays_08_func LABELS gfortran llvm wasm)
 RUN(NAME arrays_09 LABELS gfortran)
 RUN(NAME arrays_10 LABELS gfortran)
 RUN(NAME arrays_11 LABELS gfortran llvm cpp)
 RUN(NAME arrays_12 LABELS gfortran) # constant arrays
+RUN(NAME arrays_13 LABELS gfortran llvm) # constant arrays
+RUN(NAME arrays_inputs_15 LABELS gfortran llvm) # constant arrays
 
 RUN(NAME arrays_intrin_01 LABELS gfortran) # minval, maxval
 RUN(NAME arrays_intrin_02 LABELS gfortran) # all, any
@@ -299,9 +343,13 @@ RUN(NAME operator_overloading_05_module3 LABELS gfortran llvm EXTRAFILES
 RUN(NAME associate_06 LABELS gfortran EXTRAFILES
         associate_06_module.f90)
 
-RUN(NAME bindc_01 LABELS gfortran EXTRAFILES bindc_01b.f90 bindc_01c.c)
+RUN(NAME bindc1 LABELS gfortran llvm)
+RUN(NAME bindc2 LABELS gfortran llvm)
+RUN(NAME bindc3 LABELS gfortran llvm)
+RUN(NAME bindc4 LABELS gfortran llvm)
+RUN(NAME bindc_01 LABELS gfortran llvm EXTRAFILES bindc_01b.f90 bindc_01c.c)
+RUN(NAME bindc_02 LABELS gfortran llvm EXTRAFILES bindc_02b.f90 bindc_02c.c)
 
-RUN(NAME if_04 LABELS gfortran x86)
 RUN(NAME case_01 LABELS gfortran llvm)
 RUN(NAME case_02 LABELS gfortran llvm)
 RUN(NAME case_03 LABELS gfortran llvm)
@@ -381,6 +429,8 @@ RUN(NAME derived_types_06 LABELS gfortran llvm)
 RUN(NAME derived_types_05 LABELS gfortran)
 RUN(NAME derived_types_07 LABELS gfortran)
 RUN(NAME derived_types_08 LABELS gfortran)
+RUN(NAME derived_types_09 LABELS gfortran EXTRAFILES
+        derived_types_09b.f90 derived_types_09c.f90)
 
 RUN(NAME line_continuation_01 LABELS gfortran llvm)
 RUN(NAME line_continuation_02 LABELS gfortran llvm)
@@ -470,9 +520,9 @@ RUN(NAME kwargs_02 LABELS gfortran)
 RUN(NAME test_iso_c_binding LABELS gfortran llvm)
 RUN(NAME test_iso_fortran_env LABELS gfortran llvm)
 
-RUN(NAME abs_01 LABELS gfortran llvm)
-RUN(NAME abs_02 LABELS gfortran llvm)
-RUN(NAME abs_03 LABELS gfortran llvm)
+RUN(NAME abs_01 LABELS gfortran llvm wasm)
+RUN(NAME abs_02 LABELS gfortran llvm) # for wasm, currently we get type mismatch error
+RUN(NAME abs_03 LABELS gfortran llvm wasm)
 RUN(NAME sqrt_01 LABELS gfortran llvm)
 RUN(NAME sqrt_02 LABELS gfortran llvm)
 RUN(NAME sin_01 LABELS gfortran llvm)

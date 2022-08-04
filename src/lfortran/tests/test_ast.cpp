@@ -8,6 +8,7 @@
 #include <lfortran/parser/parser.h>
 #include <lfortran/semantics/ast_to_asr.h>
 #include <libasr/asr_verify.h>
+#include <libasr/utils.h>
 
 namespace LFortran {
 
@@ -38,9 +39,10 @@ end program
 )""";
 
     LFortran::diag::Diagnostics diagnostics;
+    CompilerOptions compiler_options;
     AST::TranslationUnit_t* ast = TRY(LFortran::parse(al, src, diagnostics));
     ASR::TranslationUnit_t* asr = TRY(LFortran::ast_to_asr(al, *ast,
-        diagnostics));
+        diagnostics, nullptr, false, compiler_options));
 
     CHECK(asr_verify(*asr)); // Passes
 
@@ -52,7 +54,7 @@ end program
     v->m_v = &(prog->base); // Assign the wrong symbol to Var_t::m_v
 
     // This will be caught by the verifier
-    CHECK_THROWS_AS(asr_verify(*asr), LFortranException);
+    CHECK_THROWS_AS(asr_verify(*asr), LCompilersException);
 }
 
 

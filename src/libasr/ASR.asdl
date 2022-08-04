@@ -88,7 +88,7 @@ symbol
         abi abi, access access, deftype deftype, string? bindc_name, bool pure,
         bool module)
     | Function(symbol_table symtab, identifier name, expr* args, stmt* body,
-        expr return_var, abi abi, access access, deftype deftype,
+        expr return_var, abi abi, access access, deftype deftype, bool elemental,
         string? bindc_name)
     | GenericProcedure(symbol_table parent_symtab, identifier name,
         symbol* procs, access access)
@@ -177,7 +177,7 @@ stmt
     | GoToTarget(int id)
     | If(expr test, stmt* body, stmt* orelse)
     | IfArithmetic(expr test, int lt_label, int eq_label, int gt_label)
-    | Print(expr? fmt, expr* values)
+    | Print(expr? fmt, expr* values, expr? separator, expr? end)
     | FileOpen(int label, expr? newunit, expr? filename, expr? status)
     | FileClose(int label, expr? unit, expr? iostat, expr? iomsg, expr? err, expr? status)
     | FileRead(int label, expr? unit, expr? fmt, expr? iomsg, expr? iostat, expr? id, expr* values)
@@ -190,7 +190,7 @@ stmt
               expr? read, expr? write, expr? readwrite, expr? delim,
               expr? pad, expr? flen, expr? blocksize, expr? convert,
               expr? carriagecontrol, expr? iolength)
-    | FileWrite(int label, expr? unit, expr? fmt, expr? iomsg, expr? iostat, expr? id, expr* values)
+    | FileWrite(int label, expr? unit, expr? fmt, expr? iomsg, expr? iostat, expr? id, expr* values, expr? separator, expr? end)
     | Return()
     | Select(expr test, case_stmt* body, stmt* default)
     | Stop(expr? code)
@@ -200,42 +200,49 @@ stmt
     | WhileLoop(expr test, stmt* body)
     | Nullify(symbol* vars)
     | Flush(int label, expr unit, expr? err, expr? iomsg, expr? iostat)
-    | ListAppend(symbol a, expr ele)
+    | ListAppend(expr a, expr ele)
     | AssociateBlockCall(symbol m)
-    | BlockCall(symbol m)
-    | SetInsert(symbol a, expr ele)
-    | SetRemove(symbol a, expr ele)
-    | ListInsert(symbol a, expr pos, expr ele)
-    | ListRemove(symbol a, expr ele)
-    | DictInsert(symbol a, expr key, expr value)
+    | CPtrToPointer(expr cptr, expr ptr, expr? shape)
+    | BlockCall(int label, symbol m)
+    | SetInsert(expr a, expr ele)
+    | SetRemove(expr a, expr ele)
+    | ListInsert(expr a, expr pos, expr ele)
+    | ListRemove(expr a, expr ele)
+    | DictInsert(expr a, expr key, expr value)
 
 
 expr
-    = BoolOp(expr left, boolop op, expr right, ttype type, expr? value)
-    | BinOp(expr left, binop op, expr right, ttype type, expr? value, expr? overloaded)
-    | StrOp(expr left, strop op, expr right, ttype type, expr? value)
-    | UnaryOp(unaryop op, expr operand, ttype type, expr? value)
+    = IfExp(expr test, expr body, expr orelse, ttype type, expr? value)
         -- Such as: (x, y+z), (3.0, 2.0) generally not known at compile time
     | ComplexConstructor(expr re, expr im, ttype type, expr? value)
     | NamedExpr(expr target, expr value, ttype type)
-    | Compare(expr left, cmpop op, expr right, ttype type, expr? value, expr? overloaded)
-    | IfExp(expr test, expr body, expr orelse, ttype type)
     | FunctionCall(symbol name, symbol? original_name,
             call_arg* args, ttype type, expr? value, expr? dt)
-    | DerivedTypeConstructor(symbol dt_sym, expr* args, ttype type)
+    | DerivedTypeConstructor(symbol dt_sym, expr* args, ttype type, expr? value)
     | ImpliedDoLoop(expr* values, expr var, expr start, expr end,
                     expr? increment, ttype type, expr? value)
     | IntegerConstant(int n, ttype type)
     | IntegerBOZ(int v, integerboz intboz_type, ttype? type)
+    | IntegerBitNot(expr arg, ttype type, expr? value)
+    | IntegerUnaryMinus(expr arg, ttype type, expr? value)
+    | IntegerCompare(expr left, cmpop op, expr right, ttype type, expr? value)
+    | IntegerBinOp(expr left, binop op, expr right, ttype type, expr? value)
     | RealConstant(float r, ttype type)
+    | RealUnaryMinus(expr arg, ttype type, expr? value)
+    | RealCompare(expr left, cmpop op, expr right, ttype type, expr? value)
+    | RealBinOp(expr left, binop op, expr right, ttype type, expr? value)
     | ComplexConstant(float re, float im, ttype type)
+    | ComplexUnaryMinus(expr arg, ttype type, expr? value)
+    | ComplexCompare(expr left, cmpop op, expr right, ttype type, expr? value)
+    | ComplexBinOp(expr left, binop op, expr right, ttype type, expr? value)
     | LogicalConstant(bool value, ttype type)
+    | LogicalNot(expr arg, ttype type, expr? value)
+    | LogicalCompare(expr left, cmpop op, expr right, ttype type, expr? value)
+    | LogicalBinOp(expr left, logicalbinop op, expr right, ttype type, expr? value)
 
     | ListConstant(expr* args, ttype type)
     | ListLen(expr arg, ttype type, expr? value)
     | ListConcat(expr left, expr right, ttype type, expr? value)
-
-    | ArrayConstant(expr* args, ttype type)
 
     | SetConstant(expr* elements, ttype type)
     | SetLen(expr arg, ttype type, expr? value)
@@ -245,24 +252,47 @@ expr
 
     | StringConstant(string s, ttype type)
     | StringConcat(expr left, expr right, ttype type, expr? value)
+    | StringRepeat(expr left, expr right, ttype type, expr? value)
     | StringLen(expr arg, ttype type, expr? value)
+    | StringItem(expr arg, expr idx, ttype type, expr? value)
+    | StringSection(expr arg, expr? start, expr? end, expr? step, ttype type, expr? value)
+    | StringCompare(expr left, cmpop op, expr right, ttype type, expr? value)
+    | StringOrd(expr arg, ttype type, expr? value)
+    | StringChr(expr arg, ttype type, expr? value)
 
     | DictConstant(expr* keys, expr* values, ttype type)
     | DictLen(expr arg, ttype type, expr? value)
+
     | Var(symbol v)
-    | ArrayRef(symbol v, array_index* args, ttype type, expr? value)
+
+    | ArrayConstant(expr* args, ttype type)
+    | ArrayItem(expr v, array_index* args, ttype type, expr? value)
+    | ArraySection(expr v, array_index* args, ttype type, expr? value)
     | ArraySize(expr v, expr? dim, ttype type, expr? value)
-    | ArrayBound(expr v, expr? dim ttype type, arraybound bound,
+    | ArrayBound(expr v, expr? dim, ttype type, arraybound bound,
                  expr? value)
     | ArrayTranspose(expr matrix, ttype type, expr? value)
     | ArrayMatMul(expr matrix_a, expr matrix_b, ttype type, expr? value)
     | ArrayPack(expr array, expr mask, expr? vector, ttype type, expr? value)
-    | Transfer(expr source, expr mold, expr? size, ttype type, expr? value)
+    | ArrayReshape(expr array, expr shape, ttype type, expr? value)
+
+    | BitCast(expr source, expr mold, expr? size, ttype type, expr? value)
     | DerivedRef(expr v, symbol m, ttype type, expr? value)
+    | OverloadedCompare(expr left, cmpop op, expr right, ttype type, expr? value, expr overloaded)
+    | OverloadedBinOp(expr left, binop op, expr right, ttype type, expr? value, expr overloaded)
     | Cast(expr arg, cast_kind kind, ttype type, expr? value)
     | ComplexRe(expr arg, ttype type, expr? value)
     | ComplexIm(expr arg, ttype type, expr? value)
-    | DictItem(symbol a, expr key, expr? default, ttype type)
+    | DictItem(expr a, expr key, expr? default, ttype type, expr? value)
+    | CLoc(expr arg, ttype type, expr? value)
+    | PointerToCPtr(expr arg, ttype type, expr? value)
+    | GetPointer(expr arg, ttype type, expr? value)
+    | ListItem(expr a, expr pos, ttype type, expr? value)
+    | TupleItem(expr a, expr pos, ttype type, expr? value)
+    | ListSection(expr a, array_index section, ttype type, expr? value)
+    | ListPop(expr a, expr? index, ttype type, expr? value)
+    | DictPop(expr a, expr key, ttype type, expr? value)
+    | SetPop(expr a, ttype type, expr? value)
 
 
 -- `len` in Character:
@@ -270,6 +300,19 @@ expr
 --  -1 ... character(*), i.e., inferred at runtime
 --  -2 ... character(:), allocatable (possibly we might use -1 for that also)
 --  -3 ... character(n+3), i.e., a runtime expression stored in `len_expr`
+
+-- kind: The `kind` member selects the kind of a given type. We currently
+-- support the following:
+-- Integer kinds: 1 (i8), 2 (i16), 4 (i32), 8 (i64)
+-- Real kinds: 4 (f32), 8 (f64)
+-- Complex kinds: 4 (c32), 8 (c64)
+-- Character kinds: 1 (utf8 string)
+-- Logical kinds: 1, 2, 4: (boolean represented by 1, 2, 4 bytes; the default
+--     kind is 4, just like the default integer kind, consistent with Python
+--     and Fortran: in Python "Booleans in Python are implemented as a subclass
+--     of integers", in Fortran the "default logical kind has the same storage
+--     size as the default integer"; we currently use kind=4 as default
+--     integer, so we also use kind=4 for the default logical.)
 
 ttype
     = Integer(int kind, dimension* dims)
@@ -284,14 +327,11 @@ ttype
     | Class(symbol class_type, dimension* dims)
     | Dict(ttype key_type, ttype value_type)
     | Pointer(ttype type)
+    | CPtr()
 
-boolop = And | Or | Xor | NEqv | Eqv
+binop = Add | Sub | Mul | Div | Pow | BitAnd | BitOr | BitXor | BitLShift | BitRShift
 
-binop = Add | Sub | Mul | Div | Pow
-
-unaryop = Invert | Not | UAdd | USub
-
-strop = Repeat
+logicalbinop = And | Or | Xor | NEqv | Eqv
 
 cmpop = Eq | NotEq | Lt | LtE | Gt | GtE
 
@@ -302,16 +342,24 @@ arraybound = LBound | UBound
 cast_kind
     = RealToInteger
     | IntegerToReal
+    | LogicalToReal
     | RealToReal
     | IntegerToInteger
     | RealToComplex
     | IntegerToComplex
     | IntegerToLogical
+    | RealToLogical
+    | CharacterToLogical
+    | CharacterToInteger
+    | ComplexToLogical
     | ComplexToComplex
     | ComplexToReal
     | LogicalToInteger
+    | RealToCharacter
+    | IntegerToCharacter
+    | LogicalToCharacter
 
-dimension = (expr? start, expr? end)
+dimension = (expr? start, expr? length)
 
 alloc_arg = (symbol a, dimension* dims)
 
