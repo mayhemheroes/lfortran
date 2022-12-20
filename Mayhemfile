@@ -1,0 +1,5 @@
+project: lfortran
+target: lfortran
+
+cmds:
+  - cmd: /lfortran -S @@
