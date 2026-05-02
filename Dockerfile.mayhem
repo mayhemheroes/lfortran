@@ -1,21 +1,23 @@
-FROM --platform=linux/amd64 ubuntu:22.04 as builder
+FROM --platform=linux/amd64 ubuntu:22.04 AS builder
 
 RUN apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git wget binutils-dev cmake libz-dev llvm-dev clang
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl binutils-dev libz-dev
 
-RUN wget --no-check-certificate https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-RUN bash miniconda.sh -b -p $HOME/conda_root
-ENV PATH=/root/conda_root/bin:$PATH
-
-RUN conda create -n lf -c conda-forge llvmdev=11.0.1 bison=3.4 re2c python cmake make toml
-SHELL ["conda", "run", "-n", "lf", "/bin/bash", "-c"]
+RUN curl -L -O "https://github.com/conda-forge/miniforge/releases/download/24.11.0-0/Miniforge3-Linux-x86_64.sh"
+RUN bash Miniforge3-Linux-x86_64.sh -b -p /root/miniforge3
+ENV PATH=/root/miniforge3/bin:$PATH
 
 COPY . /repo
 WORKDIR /repo
-RUN ./build0.sh
-RUN ./build1.sh
 
-FROM ubuntu:22.04 as package
+RUN mamba env create -f environment_linux.yml -y
+SHELL ["/root/miniforge3/bin/mamba", "run", "-n", "lf", "/bin/bash", "-c"]
+
+ENV version=v0.0.0
+RUN ./build0.sh
+RUN ./build_release.sh
+
+FROM ubuntu:22.04 AS package
 RUN apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y binutils-dev
 COPY --from=builder /repo/inst/bin/lfortran /
